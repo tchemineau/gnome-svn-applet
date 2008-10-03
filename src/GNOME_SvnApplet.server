@@ -2,7 +2,7 @@
 
 <oaf_server iid="OAFIID:GNOME_SvnApplet_Factory"
             type="exe"
-            location="/home/tchemineau/Documents/Contributions/gnome-svn-applet/src/svn_applet.py">
+            location="/home/tchemineau/Contributions/gnome-svn-applet/trunk/src/svn_applet.py">
 
         <oaf_attribute name="repo_ids" type="stringv">
                 <item value="IDL:Bonobo/GenericFactory:1.0"/>
@@ -24,7 +24,7 @@
         <oaf_attribute name="name" type="string" value="SvnApplet"/>
         <oaf_attribute name="description" type="string" value="Python Subversion Applet"/>
         <oaf_attribute name="panel:category" type="string" value="Utility"/>
-        <oaf_attribute name="panel:icon" type="string" value="/home/tchemineau/Documents/Contributions/gnome-svn-applet/src/icons/svn_applet_icon.png"/>
+        <oaf_attribute name="panel:icon" type="string" value="/home/tchemineau/Contributions/gnome-svn-applet/trunk/src/icons/svn_applet_icon.png"/>
 </oaf_server>
 
 </oaf_info>

@@ -36,16 +36,39 @@ class svnApplet(gnomeapplet.Applet):
         """ Show a Gnome About window
         """
 
-        about = gnome.ui.About(
-                "svn-applet",
-                "0.1",
-                "GPL",
-                "Subversion Applet",
-                ["Thomas Chemineau"],
-                ["Thomas Chemineau"],
-                "Thomas Chemineau",
-                self.logo )
+        license = """
+Gnome Subversion Applet
+Copyright (C) 2008  Thomas Chemineau
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
+        about = gtk.AboutDialog()
+        about.set_name("Subversion Applet")
+        about.set_version("0.1")
+        about.set_license(license)
+        about.set_wrap_license(True)
+        about.set_website("https://projects.aepik.net/p/gnome-svn-applet/")
+        about.set_authors(["Thomas Chemineau : Project Leader"])
+        about.set_logo(self.logo)
+
+        about.connect("response", self.handler_gui_window_about)
         about.show()
+
+        #about = gnome.ui.About(
+        #        "svn-applet",
+        #        "0.1",
+        #        "GPL",
+        #        "Subversion Applet",
+        #        ["Thomas Chemineau"],
+        #        ["Thomas Chemineau"],
+        #        "Thomas Chemineau",
+        #        self.logo )
+        #about.show()
 
 
 
@@ -94,9 +117,17 @@ class svnApplet(gnomeapplet.Applet):
         return 1
 
 
+    def handler_gui_window_about(self, window, response):
+        """ This is the handler function of gui_window_about.
+        """
+
+        window.hide()
+        window.destroy()
+
+
 
     def handler_gui_window_refresh(self, window, response):
-        """ This is the handler function of show_window_refresh.
+        """ This is the handler function of gui_window_refresh.
             It is here where we decide to check or not all svn repositories.
         """
 
