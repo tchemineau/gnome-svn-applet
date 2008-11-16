@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+#
+# Ubuntu Packages :
+# apt-get install python-svn
+# apt-get install python-elementtree
 
 
 
@@ -10,174 +14,98 @@ import gtk
 import gtk.glade
 import gnomeapplet
 import gnome.ui
-import os.path
+import os
 import re
 import gobject
 import gc
 import pysvn
-import svn_applet_globals as pglobals
+import svn_applet_globals
 import xml.etree.ElementTree as ET
 
-# Ubuntu Packages :
-# apt-get install python-svn
-# apt-get install python-elementtree
 
 
-
-#-------------------------------------------------------------------------------
-# Main class
-#-------------------------------------------------------------------------------
-
+gobject.type_register(svnApplet)
 class svnApplet(gnomeapplet.Applet):
 
+    #---------------------------------------------------------------------------
+    # MAIN
+    #---------------------------------------------------------------------------
 
-
-    def gui_window_about(self, *arguments, **keywords):
-        """ Show a Gnome About window
+    def __init__(self, applet, iid):
+        """ The main function.
+            It is here where we build the applet and all graphical elements.
         """
 
-        license = """
-Gnome Subversion Applet
-Copyright (C) 2008  Thomas Chemineau
+        # Initializing application
+        self.__gobject_init__()
+        gnome.init(pglobals.name, pglobals.version)
+        self.config_init()
+        self.gui_build()
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+        # Update info from filesystem.
+        # We define the callback function for timer request.
+        gobject.timeout_add(self.timeout_interval, self.handler_timeout, self)
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+        # Connecting the "destroy" signal and show the applet.
+        applet.connect("destroy", self.handler_shutdown)
+        applet.show_all()
 
-You should have received a copy of the GNU General Public License along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""
+    #---------------------------------------------------------------------------
+    # CONFIG
+    #---------------------------------------------------------------------------
 
-        about = gtk.AboutDialog()
-        about.set_name("Subversion Applet")
-        about.set_version("0.1")
-        about.set_license(license)
-        about.set_wrap_license(True)
-        about.set_website("https://projects.aepik.net/p/gnome-svn-applet/")
-        about.set_authors(["Thomas Chemineau : Project Leader"])
-        about.set_logo(self.logo)
-
-        about.connect("response", self.handler_gui_window_about)
-        about.show()
-
-        #about = gnome.ui.About(
-        #        "svn-applet",
-        #        "0.1",
-        #        "GPL",
-        #        "Subversion Applet",
-        #        ["Thomas Chemineau"],
-        #        ["Thomas Chemineau"],
-        #        "Thomas Chemineau",
-        #        self.logo )
-        #about.show()
-
-
-
-    def gui_window_configure(self, *arguments, **keywords):
-        """ Show the configuration window.
-            The user will be able to choose directories to monitore, and ajust
-            time of checking.
+    def config_init(self):
+        """ Initialize configuration parameters
         """
+        self.check = False
+        self.check_in = False
+        self.check_interval = 1000
+        self.dir_root = os.getcwd()
+        self.dir_icon = os.path.join(self.dir_root, 'icons')
+        self.file_conf = os.path.join(self.dir_root, 'svn_applet.conf')
+        self.file_icon_updateon = os.path.join(self.dir_icon, 'svn_applet_icon_24.png')
+        self.file_icon_updateoff = os.path.join(self.dir_icon, 'svn_applet_icon_24_active.png')
+        self.file_logo = os.path.join(self.dir_icon, 'svn_applet_icon.png')
 
-        return
-
-
-
-    def gui_window_refresh(self, *arguments, **keywords):
-        """ Show a little window that ask for refreshing all svn checks.
+    def config_get_directories(self, path):
+        """ Read an XML configuration file which contains svn directories
+            to check.
         """
+        tree = ET.parse(path)
+        directories = []
+        for directory in tree.findall("svn/directory"):
+            directories.append(directory.text)
+        return directories
 
-        refresh = gtk.MessageDialog(
-                parent = None,
-                flags = 0,
-                type = gtk.MESSAGE_INFO,
-                buttons = gtk.BUTTONS_OK + gtk.BUTTONS_CANCEL,
-                message_format = "Checking all defined subversion directories ?"
-            )
+    #---------------------------------------------------------------------------
+    # CORE
+    #---------------------------------------------------------------------------
 
-        refresh.set_default_response(gtk.RESPONSE_CANCEL)
-        refresh.connect("response", self.handler_gui_window_refresh)
-        refresh.show()
-
-
-
-    def handler_timeout(self,event):
-        """ Clock timer.
-            This function checks if there is jobs to perform.
-        """
-
-        if self.check and not self.checkin:
-            self.check = True
-            self.check = False
-            nb = self.svn_checkall()
-            if nb != 0:
-                self.set_icon(os.path.join(
-                        pglobals.image_dir,'svn_applet_icon_24_active.png'))
-            self.checkin = False
-
-        return 1
-
-
-    def handler_gui_window_about(self, window, response):
-        """ This is the handler function of gui_window_about.
-        """
-
-        window.hide()
-        window.destroy()
-
-
-
-    def handler_gui_window_refresh(self, window, response):
-        """ This is the handler function of gui_window_refresh.
-            It is here where we decide to check or not all svn repositories.
-        """
-
-        window.hide()
-        if response == gtk.RESPONSE_YES:
-            self.check = True
-        window.destroy()
-
-
-
-    def handler_shutdown(self, event):
+    def core_shutdown_handler(self, event):
         """ Kill this applet
         """
-
         del self.applet
 
-
-
-    def handler_ssl_server_trust_prompt(self, trust_dict):
+    def core_ssl_server_trust_prompt_handler(self, trust_dict):
         """ This function is an handler. Its job is to auto accept all
             non trusted certificates.
         """
-
         return True, trust_dict['failures'], False
 
-
-
-    def read_configuration(self, path):
-        """ Read an XML configuration file.
+    def core_timeout_handler(self,event):
+        """ Clock timer.
+            This function checks if there is jobs to perform.
         """
-        tree = ET.parse(path)
+        if self.check and not self.checkin:
+            self.check = True
+            if self.svn_checkall() != 0:
+                self.gui_set_icon(self.file_icon_updateon)
+            self.checkin = False
+        return 1
 
-        directories = []
-        for directory in tree.findall("directory"):
-            directories.append(directory.text)
-
-        return directories
-
-
-
-    def set_icon(self, path):
-        """ Update the applet icon.
-        """
-
-        self.icon.clear()
-        gc.collect()
-        self.icon_path = path
-        self.icon.set_from_file(self.icon_path)
-
-
+    #---------------------------------------------------------------------------
+    # SVN
+    #---------------------------------------------------------------------------
 
     def svn_check(self, directory):
         """ Check one SVN repository.
@@ -185,7 +113,7 @@ You should have received a copy of the GNU General Public License along with thi
         """
 
         client = pysvn.Client()
-        client.callback_ssl_server_trust_prompt = self.handler_ssl_server_trust_prompt
+        client.callback_ssl_server_trust_prompt = self.core_ssl_server_trust_prompt_handler
 
         r_path, r_dict = client.info2(directory, recurse = False)[0]
         local_url = r_dict['URL']
@@ -197,16 +125,13 @@ You should have received a copy of the GNU General Public License along with thi
 
         return (r_path, local_rev, remote_rev)
 
-
-
     def svn_checkall(self):
         """ Check all SVN repositories.
             Thus function returns the number of SVN repositories to update.
         """
 
         directories_notUpdated = 0
-        directories = self.read_configuration(
-                os.path.join(pglobals.applet_dir,'/svn_applet.conf'))
+        directories = self.read_configuration(self.file_conf)
 
         for directory in directories:
             r_path, l_rev, r_rev = self.svn_check(directory)
@@ -215,30 +140,21 @@ You should have received a copy of the GNU General Public License along with thi
 
         return directories_notUpdated
 
+    #---------------------------------------------------------------------------
+    # GUI
+    #---------------------------------------------------------------------------
 
-
-    def __init__(self, applet, iid):
-        """ The main function.
-            It is here where we build the applet and all graphical elements.
+    def gui_build(self):
+        """ Build the Gnome Applet
         """
-
-        self.__gobject_init__()
-        gnome.init(pglobals.name, pglobals.version)
-
-        # Global internal parameters
-        self.timeout_interval = 1000
-        self.icon_path = ''
-        self.check = False
-        self.checkin = False
 
         # Build main images.
         # self.logo should be used for big image.
         # self.icon should be used as icon in Gnome Deskbar.
         self.logo = None
-        self.logo = gtk.gdk.pixbuf_new_from_file(
-                os.path.join(pglobals.image_dir,'svn_applet_icon.png'))
+        self.logo = gtk.gdk.pixbuf_new_from_file(self.file_logo)
         self.icon = gtk.Image()
-        self.set_icon(os.path.join(pglobals.image_dir,'svn_applet_icon_24.png'))
+        self.gui_set_icon(self.file_icon_updateoff)
         self.icon.show()
 
         # This part describes the contains of the applet. We have a popup menu
@@ -272,19 +188,62 @@ You should have received a copy of the GNU General Public License along with thi
         tooltips = gtk.Tooltips()
         tooltips.set_tip(applet, "Subversion Applet", tip_private=None)
 
-        # Update info from filesystem.
-        # We define the callback function for timer request.
-        gobject.timeout_add(self.timeout_interval, self.handler_timeout, self)
+    def gui_set_icon(self, path):
+        """ Update the applet icon.
+        """
+        self.icon.clear()
+        gc.collect()
+        self.icon.set_from_file(path)
 
-        # Connecting the "destroy" signal and show the applet.
-        applet.connect("destroy", self.handler_shutdown)
-        applet.show_all()
+    def gui_window_about(self, *arguments, **keywords):
+        """ Show a Gnome About window
+        """
+        about = gtk.AboutDialog()
+        about.set_name("Subversion Applet")
+        about.set_version("0.1")
+        about.set_license(pglobals.license)
+        about.set_wrap_license(True)
+        about.set_website("https://projects.aepik.net/p/gnome-svn-applet/")
+        about.set_authors(["Thomas Chemineau : Project Leader"])
+        about.set_logo(self.logo)
+        about.connect("response", self.gui_window_about_handler)
+        about.show()
 
+    def gui_window_about_handler(self, window, response):
+        """ This is the handler function of gui_window_about.
+        """
+        window.hide()
+        window.destroy()
 
+    def gui_window_configure(self, *arguments, **keywords):
+        """ Show the configuration window.
+            The user will be able to choose directories to monitore, and ajust
+            time of checking.
+        """
+        return
 
-gobject.type_register(svnApplet)
+    def gui_window_refresh(self, *arguments, **keywords):
+        """ Show a little window that ask for refreshing all svn checks.
+        """
+        refresh = gtk.MessageDialog(
+                parent = None,
+                flags = 0,
+                type = gtk.MESSAGE_INFO,
+                buttons = gtk.BUTTONS_OK + gtk.BUTTONS_CANCEL,
+                message_format = "Checking all defined subversion directories ?"
+            )
+        refresh.set_default_response(gtk.RESPONSE_CANCEL)
+        refresh.connect("response", self.gui_window_refresh_handler)
+        refresh.show()
 
-
+    def gui_window_refresh_handler(self, window, response):
+        """ This is the handler function of gui_window_refresh.
+            It is here where we decide to check or not all svn repositories.
+        """
+        window.hide()
+        if response == gtk.RESPONSE_YES:
+            self.check = True
+        window.destroy()
 
 #-------------------------------------------------------------------------------
 # Bonobo handler, for Gnome integration.
@@ -294,8 +253,6 @@ def svnAppletFactory(applet, iid):
     print "Building"
     svnApplet(applet,iid)
     return gtk.TRUE
-
-
 
 #-------------------------------------------------------------------------------
 # Main
